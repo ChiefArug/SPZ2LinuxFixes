@@ -1,0 +1,14 @@
+# Standard things to ignore
+obj/
+bin/
+Folder.DotSettings.user
+# This build's Haste specific things to ignore
+.shapez2/
+.steamuser
+.shapez2_modding_path
+# Runs are generated based on the modding path you set, so should not be included
+.run/
+
+# You may want to include some IDE config files from this folder, however that is up to you
+# Remove the following line and add exception to the .gitignore file in that folder if you do want to
+.idea/

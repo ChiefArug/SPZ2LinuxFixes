@@ -1,0 +1,7 @@
+{
+  "en-US":
+  {
+    "quickplay.menu.save-not-found.title": "Quick Play failed",
+    "quickplay.menu.save-not-found.description": "Save with name '<name/>' was not found!"
+  }
+}

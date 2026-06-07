@@ -1,0 +1,292 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netstandard2.1</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+
+        <!-- Use the SHAPEZ2_MODDING_PATH environment variable to determine where to put the file cache and game files -->
+        <!-- You should set this environment variable if you have multiple projects using this template so you don't -->
+        <!-- have a ton of duplicate Shapez 2 installations -->
+        <SHAPEZ2_MODDING_PATH Condition="'$(SHAPEZ2_MODDING_PATH)' == ''">.shapez2</SHAPEZ2_MODDING_PATH>
+        <BasePath>$(SHAPEZ2_MODDING_PATH)</BasePath>
+        <XDG_CONFIG_HOME Condition="'$(XDG_CONFIG_HOME)' == ''">$(HOME)/.config</XDG_CONFIG_HOME>
+        <ModsFolder>$(XDG_CONFIG_HOME)/unity3d/tobspr Games/shapez 2/mods</ModsFolder>
+        <Shapze2Dlls Condition=" '$(Shapez2Dlls)' == '' ">$(BasePath)/game/shapez 2_Data/Managed/*.dll</Shapze2Dlls>
+        <WorkshopDependencies Condition=" '$(WorkshopDependencies)' == '' ">$(BasePath)/workshop/*/*.dll</WorkshopDependencies>
+        <ModName>LinuxFixes</ModName>
+        <OutputPath>$(ModsFolder)/$(ModName)</OutputPath>
+        <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+
+        <!-- We are referencing mscorlib/netstandard/etc. in the game, so disable the system framework refs -->
+        <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
+        <!-- Do not generate .deps.json file (it is not needed) -->
+        <GenerateDependencyFile>false</GenerateDependencyFile>
+        <!-- Generate full debug files so that you can debug your mod. However you do not need to ship them with your mod -->
+        <DebugType>full</DebugType>
+
+        <!-- Rider sets this env var when running a sync but not when running a build. -->
+        <!-- We use this to not download stuff during sync so it doesn't take ages or potentially stall. -->
+        <IsProjectSync Condition="'$(MSBUILD_TASK_PARENT_PROCESS_PID)' == ''">false</IsProjectSync>
+        <IsProjectSync Condition="'$(MSBUILD_TASK_PARENT_PROCESS_PID)' != ''">true</IsProjectSync>
+        
+        <!-- These are here so that we can reference them quickly later on -->
+        <SteamAppId>2162800</SteamAppId>
+        <UnityRuntimeFiles>Editor/Data/PlaybackEngines/LinuxStandaloneSupport/Variations/linux64_player_development_mono</UnityRuntimeFiles>
+        <SteamInfoFile>steam-info.json</SteamInfoFile>
+        <GameVersionFile>version</GameVersionFile>
+        <UnityVersionFile>.unityversion</UnityVersionFile>
+        <SteamAppIdFile>steam_appid.txt</SteamAppIdFile>
+        <RootNamespace>CTFBFix</RootNamespace>
+    </PropertyGroup>
+    <ItemGroup>
+        <!-- Dependencies to download from the workshop-->
+        <!-- Name is required but can be anything unique and is used to name the target folder.-->
+        <!-- Increment Version to force an update -->
+        <!-- (this workaround is required due to login ratelimits and depotdownloader taking a while to login and check its up to date) -->
+        <WorkshopDependency Include="3591335975" Name="AssimpNet" Version="1"/>
+        <WorkshopDependency Include="3542712030" Name="Monomod" Version="1"/>
+        <WorkshopDependency Include="3542611357" Name="ShapezShifter" Version="1"/>
+        <!-- Reference all DLLs in the game. If you do not actually use anything in a DLL,
+         that DLL will not get referenced in your compiled mod, so it's fine to just reference everything.
+         Private="False" means that the referenced DLLs will not get copied to the output directory. -->
+        <Reference Include="$(Shapze2Dlls)" Private="false"/>
+        <Reference Include="$(WorkshopDependencies)" Private="false"/>
+        <!-- Harmony -->
+        <!-- <Reference Include="C:\Program Files (x86)\Steam\steamapps\workshop\content\1796470\3385184093\*.dll" Private="false"/> -->
+    </ItemGroup>
+    
+    <!-- Make every class and property from the game public -->
+    <ItemGroup>
+        <PackageReference Include="Krafs.Publicizer" Version="2.3.0" PrivateAssets="all" />
+        <DoNotPublicize Include="SPZGameAssembly:BeltLaneRenderingDefinition" IncludeCompilerGeneratedMembers="false" IncludeVirtualMembers="false"/>
+        <DoNotPublicize Include="Game.Core.Coordinates" IncludeCompilerGeneratedMembers="false" IncludeVirtualMembers="false"/>
+        <DoNotPublicize Include="SPZGameAssembly:BuildingDefinition" IncludeCompilerGeneratedMembers="false" IncludeVirtualMembers="false"/>
+        <DoNotPublicize Include="Game.Orchestration:ParentToolbarElementData" IncludeCompilerGeneratedMembers="false" IncludeVirtualMembers="false"/>
+        <DoNotPublicize Include="Game.Orchestration:RootToolbarElementData" IncludeCompilerGeneratedMembers="false" IncludeVirtualMembers="false"/>
+        
+        <!-- TODO: automatically generate this? -->
+        <None Update="manifest.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+        <None Update="libcrosstales_filebrowser_reimpl.so">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+        <None Update="lib_rempl_license.txt">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
+    <PropertyGroup>
+        <PublicizeAll>true</PublicizeAll>
+    </PropertyGroup>
+
+    <!--
+        ====================== SHAPEZ 2 SETUP TARGETS ======================
+         The following targets download and set up a project-local copy of
+        Shapez 2 for mod development and debugging of Shapez 2 and your mod.
+
+         Yes none of this is needed if you just point the build file to a
+                    local copy of Shapez 2 and give up debugging
+
+        If you are using this template for multiple mods it is reccomended
+        that you set the SHAPEZ2_MODDING_PATH environment variable so all
+         mods using this template share one installation, as it is quite
+                                      large.
+
+
+                               Authored by ChiefArug
+                          @chiefarug on the Shapez2 Discord
+                      Contact for information on this madness
+        ===================================================================
+    -->
+    <Target Name="DownloadVersionInfo" Outputs="$(BasePath)/$(SteamInfoFile)">
+        <!-- Steam doesn't support the way that MSBuild determines if a downloaded file is new or not, so this gets downloaded each time -->
+        <!-- That is fine though as it is a tiny file -->
+        <DownloadFile DestinationFolder="$(BasePath)/downloadcache" SourceUrl="https://api.steamcmd.net/v1/info/$(SteamAppId)" DestinationFileName="$(SteamInfoFile)" SkipUnchangedFiles="True"/>
+        <!-- Read the lines from the file and then write them to a file in a diferent location -->
+        <!-- Yes this seems stupid, but it ensures that the file modification date doesn't change unless the contents change -->
+        <ReadLinesFromFile File="$(BasePath)/downloadcache/$(SteamInfoFile)">
+            <Output TaskParameter="Lines" ItemName="SteamInfoJsonContents"/>
+        </ReadLinesFromFile>
+        <WriteLinesToFile File="$(BasePath)/$(SteamInfoFile)" WriteOnlyWhenDifferent="true" Lines="@(SteamInfoJsonContents)" Overwrite="True"/>
+    </Target>
+    <Target Name="DownloadDepotDownloader" Outputs="$(BasePath)/buildbin/depotdownloader/DepotDownloader">
+        <MakeDir Directories="$(BasePath)/downloadcache;$(BasePath)/buildbin/depotdownloader"/>
+        <Message Text="Downloading DepotDownloader"/>
+        <DownloadFile DestinationFolder="$(BasePath)/downloadcache" SourceUrl="https://github.com/SteamRE/DepotDownloader/releases/download/DepotDownloader_3.4.0/DepotDownloader-linux-x64.zip">
+            <Output TaskParameter="DownloadedFile" ItemName="DepotDownloaderZip"/>
+        </DownloadFile>
+        <Message Text="Unzipping DepotDownloader"/>
+        <Unzip DestinationFolder="$(BasePath)/buildbin/depotdownloader" SourceFiles="@(DepotDownloaderZip)"/>
+    </Target>
+    <!-- Will only download game files if the steam info file changed, which usually only happens when a new version is released. -->
+    <!-- It can happen for other reasons, but running depot downloader doesn't take *that* long so its fine -->
+    <Target Name="DownloadGameFiles" DependsOnTargets="DownloadVersionInfo" Inputs="$(BasePath)/$(SteamInfoFile)" Outputs="$(BasePath)/game/update_last_checked_timestamp">
+        <!-- This would be part of the DependsOnTargets, however we only need to run this if the version info changed and its pointless running it otherwise. -->
+        <CallTarget Targets="DownloadDepotDownloader"/>
+        <PropertyGroup>
+            <DepotDownloader>$(BasePath)/buildbin/depotdownloader/DepotDownloader</DepotDownloader>
+        </PropertyGroup>
+
+        <!-- Run with the username if it is specified. Note this requires running with -qr at least once first! -->
+        <!-- Note the use of xargs is because $(<../.steamuser) wasn't working (using it requires escaping most of the characters like so: %24%28%3C../.steamuser%29 and even that wasn't working) -->
+        <!-- Timeout is 5 minutes by default, you might need to increase this -->
+        <Exec Condition="Exists('.steamuser')" Command="cat .steamuser | xargs $(DepotDownloader) -app $(SteamAppId) -remember-password -dir $(BasePath)/game -username " Timeout="300000"/>
+        <!-- Run without the username if its not specified. This requires signing in each time! -->
+        <Exec Condition="!Exists('.steamuser')"                       Command="$(DepotDownloader) -app $(SteamAppId) -remember-password -dir $(BasePath)/game -qr"        Timeout="300000"/>
+        <Message Condition="!Exists('.steamuser')" Text="Now that you have logged in once, you can specify your steam username in a .steamuser file to automatically log in next time!" Importance="high"/>
+
+        <!-- This makes sure that even if the SteamInfoFile file gets updated with a non game related change, this task doesnt keep running every build. -->
+        <MakeDir Directories="$(BasePath)/game/"/>
+        <Touch Files="$(BasePath)/game/update_last_checked_timestamp" AlwaysCreate="true"/>
+
+        <!-- Extract the Unity version number from the freshly downloaded game files -->
+        <Exec Command="strings $(BasePath)/game/UnityPlayer.so | grep -x -E -m 1 '[0-9]+\.[0-9]+\.[0-9a-z]+ \([0-9a-z]{12}\)'" ConsoleToMSBuild="true">
+            <Output TaskParameter="ConsoleOutput" PropertyName="FullUnityVersion"/>
+        </Exec>
+        <!-- Split the version number into its two parts -->
+        <Exec Command="echo '$(FullUnityVersion)' | grep -o -E '[0-9a-z]{12}'" ConsoleToMSBuild="true">
+            <Output TaskParameter="ConsoleOutput" PropertyName="HashUnityVersion"/>
+        </Exec>
+        <Exec Command="echo '$(FullUnityVersion)' | grep -o -E '[0-9]+\.[0-9]+\.[0-9a-z]+'" ConsoleToMSBuild="true">
+            <Output TaskParameter="ConsoleOutput" PropertyName="NumericUnityVersion"/>
+        </Exec>
+        <!-- Yes I know Message exists. It doesn't log into Riders output window hence why I am using Exec and echo-->
+        <Exec Command="echo 'Detected Unity Version: $(NumericUnityVersion) ($(HashUnityVersion))'"/>
+
+        <!-- Write Unity version to a file for consumption by other targets -->
+        <WriteLinesToFile File="$(BasePath)/$(UnityVersionFile)" WriteOnlyWhenDifferent="true" Overwrite="True" Lines="$(FullUnityVersion)"/>
+    </Target>
+    <!-- It is VERY IMPORTANT that this specifies inputs and outputs properly cause extracting unity takes AGES -->
+    <Target Name="DownloadUnityFiles" DependsOnTargets="DownloadGameFiles"
+            Inputs="$(BasePath)/$(UnityVersionFile)"
+            Outputs="$(BasePath)/downloadcache/$(UnityRuntimeFiles)/shapez 2.x86_64">
+        <!-- Read the unity version from a file and split it into its component parts -->
+        <!-- We need to do this because if the DownloadGameFiles task is skipped, these properties aren't set -->
+        <Exec Command="cat $(BasePath)/$(UnityVersionFile) | grep -o -E '[0-9a-z]{12}'" ConsoleToMSBuild="true">
+            <Output TaskParameter="ConsoleOutput" PropertyName="HashUnityVersion"/>
+        </Exec>
+        <Exec Command="cat $(BasePath)/$(UnityVersionFile) | grep -o -E '[0-9]+\.[0-9]+\.[0-9a-z]+'" ConsoleToMSBuild="true">
+            <Output TaskParameter="ConsoleOutput" PropertyName="NumericUnityVersion"/>
+        </Exec>
+
+        <DownloadFile DestinationFolder="$(BasePath)/downloadcache" SourceUrl="https://download.unity3d.com/download_unity/$(HashUnityVersion)/LinuxEditorInstaller/Unity-$(NumericUnityVersion).tar.xz">
+            <Output TaskParameter="DownloadedFile" PropertyName="UnityTarball"/>
+        </DownloadFile>
+        <!-- Clear out the old unity files as otherwise they may stick around -->
+        <RemoveDir Directories="$(BasePath)/downloadcache/Editor" ContinueOnError="true"/>
+
+        <!-- We need to use tar to extract .xz files as MSBuild doesn't support it yet. See https://github.com/dotnet/msbuild/issues/7944 -->
+        <Exec Command="echo 'Extracting Unity. This will take a while, expect about 800000 checkpoints'"/>
+        <Exec Command="tar -xmf '$(UnityTarball)' --wildcards --wildcards-match-slash --checkpoint=100000 '$(UnityRuntimeFiles)/*'" WorkingDirectory="$(BasePath)/downloadcache"/>
+
+        <!-- Rename this folder to shapez 2_Data, as that is what Shapez 2 calls it -->
+        <!-- The Move task does not support directories for some reason so we use the mv command. See https://github.com/dotnet/msbuild/issues/8795 -->
+        <!-- First we need to delete the old folder though. We don't fail if it doesn't delete tho, cause the directory may not exist yet -->
+        <RemoveDir Directories="$(BasePath)/downloadcache/$(UnityRuntimeFiles)/shapez 2_Data" ContinueOnError="true"/>
+        <Exec Command="mv '$(BasePath)/downloadcache/$(UnityRuntimeFiles)/Data' '$(BasePath)/downloadcache/$(UnityRuntimeFiles)/shapez 2_Data'"/>
+        <!-- Rename the main executable. Failing to do so will cause it to be unable to find shapez 2_Data -->
+        <Move SourceFiles="$(BasePath)/downloadcache/$(UnityRuntimeFiles)/LinuxPlayer" DestinationFiles="$(BasePath)/downloadcache/$(UnityRuntimeFiles)/shapez 2.x86_64"/>
+    </Target>
+    <!-- The inputs for this task should probably be the entire list of unity player files, but one file is hopefully fine. -->
+    <!-- Only the game version is required for inputs on the Shapez 2 side, as if that doesn't change nothing else has -->
+    <Target Name="PatchShapez2Files" DependsOnTargets="DownloadUnityFiles;DownloadGameFiles"
+            Inputs="$(BasePath)/downloadcache/$(UnityRuntimeFiles)/shapez 2.x86_64;$(BasePath)/game/$(GameVersionFile)"
+            Outputs="$(BasePath)/game/$(SteamAppIdFile)">
+        <!-- See https://github.com/dnSpy/dnSpy/wiki/Debugging-Unity-Games#turning-a-release-build-into-a-debug-build for what this does -->
+        <ItemGroup>
+            <DebugFilesToCopy Include="$(BasePath)/downloadcache/$(UnityRuntimeFiles)/**"/>
+        </ItemGroup>
+        <!-- Actually copy and overwrite the shapez 2 files with these new ones-->
+        <Copy SourceFiles="@(DebugFilesToCopy)" DestinationFiles="@(DebugFilesToCopy->'$(BasePath)/game/%(RecursiveDir)%(Filename)%(Extension)')"/>
+        <!-- Write the appid file that prevents the game from restarting itself if not launched under steam -->
+        <!-- This is also used as the output file for tracking if this task needs to run, so it is ALWAYS written to -->
+        <WriteLinestoFile File="$(BasePath)/game/$(SteamAppIdFile)" Lines="$(SteamAppId)" WriteOnlyWhenDifferent="False" Overwrite="True"/>
+        <!-- Enable debugging by editing boot.config -->
+        <WriteLinestoFile File="$(BasePath)/game/shapez 2_Data/boot.config" Lines="player-connection-debug=1" Overwrite="False"/>
+        <WriteLinestoFile File="$(BasePath)/game/shapez 2_Data/boot.config" Lines="$([System.IO.File]::ReadAllText('$(BasePath)/game/shapez 2_Data/boot.config').Replace('wait-for-native-debugger=0','wait-for-native-debugger=1'))" Overwrite="True"/>
+    </Target>
+
+    <!-- This target exits so we can have an input of the modding path enviroment variable -->
+    <Target Name="ExportModdingPath">
+        <WriteLinesToFile File=".shapez2_modding_path" Lines="$(BasePath)" WriteOnlyWhenDifferent="true" Overwrite="true"/>
+    </Target>
+
+    <!-- This target exits so we can have an input of versions of workshop dependencies -->
+    <Target Name="ExportDependencies" Outputs="$(BasePath)/workshop/%(WorkshopDependency.Name)/.version">
+        <WriteLinesToFile File="$(BasePath)/workshop/%(Name)/.version" Lines="%(WorkshopDependency.Version)" WriteOnlyWhenDifferent="true" Overwrite="true"/>
+    </Target>
+    <!-- Download workshop dependencies specified above -->
+    <Target Name="DownloadWorkshopDependencies" DependsOnTargets="ExportDependencies" Inputs="$(BasePath)/workshop/%(WorkshopDependency.Name)/.version" Outputs="$(BasePath)/workshop/%(WorkshopDependency.Name)/manifest.json">
+        <!-- The same as the DownloadGameFiles task-->
+        <Exec Condition="Exists('.steamuser')" Command="cat .steamuser | xargs $(DepotDownloader) -app $(SteamAppId) -pubfile %(WorkshopDependency.Identity) -remember-password -dir $(BasePath)/workshop/%(WorkshopDependency.Name) -username " Timeout="300000"/>
+        <Exec Condition="!Exists('.steamuser')"                       Command="$(DepotDownloader) -app $(SteamAppId) -pubfile %(WorkshopDependency.Identity) -remember-password -dir $(BasePath)/workshop/%(WorkshopDependency.Name) -qr"        Timeout="300000"/>
+    </Target>
+
+    <!-- Write the run configurations to the .run folder using the path that we installed the game to. -->
+    <Target Name="SetupRunConfigurations" Inputs=".shapez2_modding_path" Outputs=".run/Launch Shapez 2 (Unity).run.xml;.run/Launch Shapez 2 (Steam).run.xml" DependsOnTargets="ExportModdingPath">
+        <PropertyGroup>
+            <SteamRunConfig>
+                <component name="ProjectRunConfigurationManager">
+                    <configuration default="false" name="Launch Shapez 2 (Steam)" type="ShConfigurationType">
+                        <option name="SCRIPT_TEXT" value="steam steam://rungameid/$(SteamAppId)" />
+                        <option name="INDEPENDENT_SCRIPT_PATH" value="true" />
+                        <option name="SCRIPT_PATH" value="" />
+                        <option name="SCRIPT_OPTIONS" value="" />
+                        <option name="INDEPENDENT_SCRIPT_WORKING_DIRECTORY" value="true" />
+                        <option name="SCRIPT_WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+                        <option name="INDEPENDENT_INTERPRETER_PATH" value="true" />
+                        <option name="INTERPRETER_PATH" value="/bin/bash" />
+                        <option name="INTERPRETER_OPTIONS" value="" />
+                        <option name="EXECUTE_IN_TERMINAL" value="true" />
+                        <option name="EXECUTE_SCRIPT_FILE" value="false" />
+                        <envs />
+                        <method v="2">
+                            <option name="Build Solution" enabled="true" />
+                        </method>
+                    </configuration>
+                </component>
+            </SteamRunConfig>
+            <DirectRunConfig>
+                <component name="ProjectRunConfigurationManager">
+                    <configuration default="false" name="Launch Shapez 2 (Direct)" type="RunUnityExe" factoryName="Unity Executable">
+                        <log_file alias="player.log" path="$USER_HOME$/.config/unity3d/tobspr Games/shapez 2/Player.log" />
+                        <option name="EXE_PATH" value="$(BasePath)/game/shapez 2.x86_64" />
+                        <option name="WORKING_DIRECTORY" value="$(BasePath)/game" />
+                        <option name="PASS_PARENT_ENVS" value="1" />
+                        <option name="ENV_FILE_PATHS" value="" />
+                        <option name="REDIRECT_INPUT_PATH" value="" />
+                        <option name="MIXED_MODE_DEBUG" value="0" />
+                        <option name="PROGRAM_PARAMETERS" value="--quick-play" />
+                        <method v="2">
+                            <option name="Build Solution" enabled="true" />
+                        </method>
+                    </configuration>
+                </component>
+            </DirectRunConfig>
+        </PropertyGroup>
+        <MakeDir Directories=".run"/>
+        <WriteLinesToFile File=".run/Launch Shapez 2 (Steam).run.xml" Lines="$(SteamRunConfig)" WriteOnlyWhenDifferent="false" Overwrite="true"/>
+        <WriteLinesToFile File=".run/Launch Shapez 2 (Direct).run.xml" Lines="$(DirectRunConfig)" WriteOnlyWhenDifferent="false" Overwrite="true"/>
+    </Target>
+
+    <!-- This is a very small target thats primary purpose is to depend on PatchShapez2Files and DownloadWorkshopDependencies and run before the build is prepared-->
+    <Target Condition="!$(IsProjectSync)" Name="Setup" BeforeTargets="PrepareForBuild">
+        <CallTarget Targets="PatchShapez2Files"/>
+        <CallTarget Targets="DownloadWorkshopDependencies"/>
+        <CallTarget Targets="SetupRunConfigurations"/>
+        <Exec Command="echo Setup complete!"/>
+    </Target>
+
+    <!-- Target to publish to steam -->
+    <Target Name="SteamPublish">
+        <Exec Command='sh ./Steam/Publish.sh "$(OutputPath)"'/>
+    </Target>
+
+    <!-- Target that deletes all files generated by this build when you run Clean -->
+    <Target Name="CleanAllShapez2Files" BeforeTargets="CoreClean">
+        <RemoveDir Directories="$(BasePath)" ContinueOnError="true"/>
+        <MakeDir Directories="$(BasePath)"/>
+    </Target>
+</Project>

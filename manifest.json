@@ -1,0 +1,20 @@
+{
+  "$schema": "https://shapez2.raphdf201.net/assets/manifestSchema.json",
+  "Version": "1.0.0",
+  "Author": "ChiefArug",
+  "Assemblies": [
+    "CTFBFix.dll"
+  ],
+  "Dependencies": [
+    {
+      "ModTitle": "MonoMod.RuntimeDetour",
+      "ModId": "steam:3542712030",
+      "Version": "*"
+    },
+    {
+      "ModTitle": "Shapez Shifter",
+      "ModId": "steam:3542611357",
+      "Version": "*"
+    }
+  ]
+}
