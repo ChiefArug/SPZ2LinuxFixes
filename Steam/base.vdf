@@ -5,6 +5,4 @@
     "contentfolder" "${CONTENT_PATH}"
     "previewfile" "${PREVIEW_IMG}"
     "visibility" "0"
-    "title" "LinuxFixes"
-    "Description" "Fixes a couple of bugs in the linux version of the game"
 }
