@@ -45,9 +45,9 @@
         <!-- Name is required but can be anything unique and is used to name the target folder.-->
         <!-- Increment Version to force an update -->
         <!-- (this workaround is required due to login ratelimits and depotdownloader taking a while to login and check its up to date) -->
-        <WorkshopDependency Include="3591335975" Name="AssimpNet" Version="1"/>
-        <WorkshopDependency Include="3542712030" Name="Monomod" Version="1"/>
-        <WorkshopDependency Include="3542611357" Name="ShapezShifter" Version="1"/>
+        <WorkshopDependency Include="3591335975" Name="AssimpNet" Version="3"/>
+        <WorkshopDependency Include="3542712030" Name="Monomod" Version="3"/>
+        <WorkshopDependency Include="3542611357" Name="ShapezShifter" Version="3"/>
         <!-- Reference all DLLs in the game. If you do not actually use anything in a DLL,
          that DLL will not get referenced in your compiled mod, so it's fine to just reference everything.
          Private="False" means that the referenced DLLs will not get copied to the output directory. -->
