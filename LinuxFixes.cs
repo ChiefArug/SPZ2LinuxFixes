@@ -1,20 +1,17 @@
 ﻿using Assimp.Unmanaged;
-using System.Linq.Expressions;
 using System.Reflection;
-using Core.Localization;
 using Crosstales.FB.Wrapper.Linux;
 using MonoMod.Cil;
 using MonoMod.RuntimeDetour;
 using ShapezShifter.SharpDetour;
 using System.Runtime.InteropServices;
-using Unity.Baselib;
 using UnityEngine;
 using ILogger = Core.Logging.ILogger;
 
 namespace LinuxFixes;
 
 public class LinuxFixes : IMod {
-    private readonly ILogger _logger;
+    private static ILogger _logger = null!;
     private readonly IDisposable[]? _hooks;
     private readonly IntPtr[]? _natives;
 
@@ -48,7 +45,7 @@ public class LinuxFixes : IMod {
         _natives = [lctfb, minizip];
 
         _hooks = [
-            // fix crosstales file browser not working on wayland by using a patched version
+            // fix crosstales file browser not working on wayland by using a reimplementation that does work
             new NativeHook(Marshal.GetFunctionPointerForDelegate(NativeMethods.DialogOpenFilePanel), Marshal.GetDelegateForFunctionPointer<DialogOpenFilePanelDelegate>(dlsym(lctfb, "DialogOpenFilePanel"))),
             new NativeHook(Marshal.GetFunctionPointerForDelegate(NativeMethods.DialogOpenFolderPanel), Marshal.GetDelegateForFunctionPointer<DialogOpenFolderPanelDelegate>(dlsym(lctfb, "DialogOpenFolderPanel"))),
             new NativeHook(Marshal.GetFunctionPointerForDelegate(NativeMethods.DialogSaveFilePanel), Marshal.GetDelegateForFunctionPointer<DialogSaveFilePanelDelegate>(dlsym(lctfb, "DialogSaveFilePanel"))),
@@ -60,6 +57,15 @@ public class LinuxFixes : IMod {
             new ILHook(typeof(UnmanagedLibrary.UnmanagedLinuxLibraryImplementation).GetMethod("NativeLoadLibrary", BindingFlags.Instance | BindingFlags.NonPublic)!, ReplaceDlMethods),
             new ILHook(typeof(UnmanagedLibrary.UnmanagedLinuxLibraryImplementation).GetMethod("NativeGetProcAddress", BindingFlags.Instance | BindingFlags.NonPublic)!, ReplaceDlMethods),
             new ILHook(typeof(UnmanagedLibrary.UnmanagedLinuxLibraryImplementation).GetMethod("NativeFreeLibrary", BindingFlags.Instance | BindingFlags.NonPublic)!, ReplaceDlMethods),
+            
+            // hook mouse position and normalize it to the current window position
+            new Hook(typeof(Input).GetMethod("get_mousePosition")!, (Func<Vector3> orig) => {
+                var original = orig();
+                if (Application.isFocused && (original.x > Screen.width || original.y > Screen.height)) {
+                    return new Vector3(original.x % Screen.width, original.y % Screen.height, original.z);
+                }
+                return original;
+            }),
         ];
     }
 
