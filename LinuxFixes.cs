@@ -112,3 +112,23 @@ public class LinuxFixes : IMod {
     
     // ReSharper restore InconsistentNaming
 }
+public static class LoggerExtensions {
+    extension(ILogger thiz) {
+        public void Debug(string message) {
+            thiz.Debug?.Log(message);
+        }
+
+        public void Info(string message) {
+            thiz.Info?.Log(message);
+        }
+
+        public void Warn(string message) {
+            thiz.Warning?.Log(message);
+        }
+
+        public void Error(string message) {
+            thiz.Error?.Log(message);
+        }
+    }
+}
+
