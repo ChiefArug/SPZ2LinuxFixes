@@ -12,7 +12,7 @@ namespace LinuxFixes;
 
 public class LinuxFixes : IMod {
     private static ILogger _logger = null!;
-    private readonly IDisposable[]? _hooks;
+    private readonly List<IDisposable>? _hooks;
     private readonly IntPtr[]? _natives;
     
     public LinuxFixes(ILogger logger) {
@@ -44,29 +44,30 @@ public class LinuxFixes : IMod {
         logger.Info($"Loaded libminizip at {minizip}");
         _natives = [lctfb, minizip];
 
-        _hooks = [
-            // fix crosstales file browser not working on wayland by using a reimplementation that does work
-            new NativeHook(Marshal.GetFunctionPointerForDelegate(NativeMethods.DialogOpenFilePanel), Marshal.GetDelegateForFunctionPointer<DialogOpenFilePanelDelegate>(dlsym(lctfb, "DialogOpenFilePanel"))),
-            new NativeHook(Marshal.GetFunctionPointerForDelegate(NativeMethods.DialogOpenFolderPanel), Marshal.GetDelegateForFunctionPointer<DialogOpenFolderPanelDelegate>(dlsym(lctfb, "DialogOpenFolderPanel"))),
-            new NativeHook(Marshal.GetFunctionPointerForDelegate(NativeMethods.DialogSaveFilePanel), Marshal.GetDelegateForFunctionPointer<DialogSaveFilePanelDelegate>(dlsym(lctfb, "DialogSaveFilePanel"))),
-            new NativeHook(Marshal.GetFunctionPointerForDelegate(NativeMethods.DialogOpenFilePanelAsync), Marshal.GetDelegateForFunctionPointer<DialogOpenFilePanelAsyncDelegate>(dlsym(lctfb, "DialogOpenFilePanelAsync"))),
-            new NativeHook(Marshal.GetFunctionPointerForDelegate(NativeMethods.DialogOpenFolderPanelAsync), Marshal.GetDelegateForFunctionPointer<DialogOpenFolderPanelAsyncDelegate>(dlsym(lctfb, "DialogOpenFolderPanelAsync"))),
-            new NativeHook(Marshal.GetFunctionPointerForDelegate(NativeMethods.DialogSaveFilePanelAsync), Marshal.GetDelegateForFunctionPointer<DialogSaveFilePanelAsyncDelegate>(dlsym(lctfb, "DialogSaveFilePanelAsync"))),
-            
-            // fix assimp using an old libdl version
-            new ILHook(typeof(UnmanagedLibrary.UnmanagedLinuxLibraryImplementation).GetMethod("NativeLoadLibrary", BindingFlags.Instance | BindingFlags.NonPublic)!, ReplaceDlMethods),
-            new ILHook(typeof(UnmanagedLibrary.UnmanagedLinuxLibraryImplementation).GetMethod("NativeGetProcAddress", BindingFlags.Instance | BindingFlags.NonPublic)!, ReplaceDlMethods),
-            new ILHook(typeof(UnmanagedLibrary.UnmanagedLinuxLibraryImplementation).GetMethod("NativeFreeLibrary", BindingFlags.Instance | BindingFlags.NonPublic)!, ReplaceDlMethods),
-            
-            // hook mouse position and normalize it to the current window position
-            new Hook(typeof(Input).GetMethod("get_mousePosition")!, (Func<Vector3> orig) => {
-                var original = orig();
-                if (Application.isFocused && (original.x > Screen.width || original.y > Screen.height)) {
-                    return new Vector3(original.x % Screen.width, original.y % Screen.height, original.z);
-                }
-                return original;
-            }),
-        ];
+        // this doesn't use a collection expression because for some reason that CREATES A SYNTHETIC CLASS
+        _hooks = new List<IDisposable>(10);
+        // fix crosstales file browser not working on wayland by using a reimplementation that does work
+        _hooks.Add(new NativeHook(Marshal.GetFunctionPointerForDelegate(NativeMethods.DialogOpenFilePanel), Marshal.GetDelegateForFunctionPointer<DialogOpenFilePanelDelegate>(dlsym(lctfb, "DialogOpenFilePanel"))));
+        _hooks.Add(new NativeHook(Marshal.GetFunctionPointerForDelegate(NativeMethods.DialogOpenFolderPanel), Marshal.GetDelegateForFunctionPointer<DialogOpenFolderPanelDelegate>(dlsym(lctfb, "DialogOpenFolderPanel"))));
+        _hooks.Add(new NativeHook(Marshal.GetFunctionPointerForDelegate(NativeMethods.DialogSaveFilePanel), Marshal.GetDelegateForFunctionPointer<DialogSaveFilePanelDelegate>(dlsym(lctfb, "DialogSaveFilePanel"))));
+        _hooks.Add(new NativeHook(Marshal.GetFunctionPointerForDelegate(NativeMethods.DialogOpenFilePanelAsync), Marshal.GetDelegateForFunctionPointer<DialogOpenFilePanelAsyncDelegate>(dlsym(lctfb, "DialogOpenFilePanelAsync"))));
+        _hooks.Add(new NativeHook(Marshal.GetFunctionPointerForDelegate(NativeMethods.DialogOpenFolderPanelAsync), Marshal.GetDelegateForFunctionPointer<DialogOpenFolderPanelAsyncDelegate>(dlsym(lctfb, "DialogOpenFolderPanelAsync"))));
+        _hooks.Add(new NativeHook(Marshal.GetFunctionPointerForDelegate(NativeMethods.DialogSaveFilePanelAsync), Marshal.GetDelegateForFunctionPointer<DialogSaveFilePanelAsyncDelegate>(dlsym(lctfb, "DialogSaveFilePanelAsync"))));
+        
+        // fix assimp using an old libdl version
+        _hooks.Add(new ILHook(typeof(UnmanagedLibrary.UnmanagedLinuxLibraryImplementation).GetMethod("NativeLoadLibrary", BindingFlags.Instance | BindingFlags.NonPublic)!, ReplaceDlMethods));
+        _hooks.Add(new ILHook(typeof(UnmanagedLibrary.UnmanagedLinuxLibraryImplementation).GetMethod("NativeGetProcAddress", BindingFlags.Instance | BindingFlags.NonPublic)!, ReplaceDlMethods));
+        _hooks.Add(new ILHook(typeof(UnmanagedLibrary.UnmanagedLinuxLibraryImplementation).GetMethod("NativeFreeLibrary", BindingFlags.Instance | BindingFlags.NonPublic)!, ReplaceDlMethods));
+        
+        // hook mouse position and normalize it to the current window position
+        _hooks.Add(new Hook(typeof(Input).GetMethod("get_mousePosition")!, (Func<Vector3> orig) => {
+            var original = orig();
+            if (Application.isFocused && (original.x > Screen.width || original.y > Screen.height)) {
+                return new Vector3(original.x % Screen.width, original.y % Screen.height, original.z);
+            }
+
+            return original;
+        }));
     }
 
     private static void ReplaceDlMethods(ILContext il)
