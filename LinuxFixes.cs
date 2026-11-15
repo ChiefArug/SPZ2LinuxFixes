@@ -10,22 +10,23 @@ using ILogger = Core.Logging.ILogger;
 
 namespace LinuxFixes;
 
-public class LinuxFixes : IDisposable {
+public class LinuxFixes : IMod {
     private static ILogger _logger = null!;
     private readonly IDisposable[]? _hooks;
     private readonly IntPtr[]? _natives;
-
-    static LinuxFixes() {
-        Console.WriteLine("LinuxFixes");        
-    }
-
+    
     public LinuxFixes(ILogger logger) {
         _logger = logger;
-        logger.Info?.Log("LinuxFixes detected Linux, loading.");
+        var os = SystemInfo.operatingSystemFamily;
+        if (os != OperatingSystemFamily.Linux) { 
+            logger.Error?.Log("LinuxFixes was not loaded on linux, what are you doing!?! This mod only fixes things on Linux.");
+            return;
+        }
+        logger.Info("LinuxFixes detected Linux, loading.");
         
         var directoryName = Path.GetDirectoryName(typeof (LinuxFixes).Assembly.Location);
         if (directoryName == null) {
-            logger.Error?.Log("Mod path is null");
+            logger.Error("Mod path is null");
             return;
         }
 
@@ -33,14 +34,14 @@ public class LinuxFixes : IDisposable {
         var lctfb = dlopen($"{directoryName}/libcrosstales_filebrowser_reimpl.so", /*RTLD_NOW*/0x002);
         var err = Marshal.PtrToStringAnsi(dlerror());
         if (!string.IsNullOrEmpty(err)) 
-            logger.Error?.Log(err);
-        logger.Info?.Log($"Loaded libcrosstales_filebrowser_reimpl at {lctfb}");
+            logger.Error(err);
+        logger.Info($"Loaded libcrosstales_filebrowser_reimpl at {lctfb}");
         // preload minizip as a global library so that when assimp tries to load it, it can find it
         var minizip = dlopen($"{directoryName}/libminizip.so", /*RTLD_NOW*/0x002 | /*RTLD_GLOBAL*/0x100);
         var err2 = Marshal.PtrToStringAnsi(dlerror());
         if (!string.IsNullOrEmpty(err2))
-            logger.Error?.Log(err2);
-        logger.Info?.Log($"Loaded libminizip at {minizip}");
+            logger.Error(err2);
+        logger.Info($"Loaded libminizip at {minizip}");
         _natives = [lctfb, minizip];
 
         _hooks = [
@@ -107,13 +108,15 @@ public class LinuxFixes : IDisposable {
     [DllImport("libdl.so.2")]
     private static extern IntPtr dlerror();
     
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate void AsyncCallback(string path); // copy this over so that loading these delegates does not try load NativeMethods
     
     private delegate nint DialogOpenFilePanelDelegate(string title, string directory, string filters, bool multiselect);
     private delegate nint DialogOpenFolderPanelDelegate(string title, string directory, bool multiselect);
     private delegate nint DialogSaveFilePanelDelegate(string title, string directory, string default_name, string filters);
-    private delegate void DialogOpenFilePanelAsyncDelegate(string title, string directory, string filters, bool multiselect, NativeMethods.AsyncCallback cb);
-    private delegate void DialogOpenFolderPanelAsyncDelegate(string title, string directory, bool multiselect, NativeMethods.AsyncCallback cb);
-    private delegate void DialogSaveFilePanelAsyncDelegate(string title, string directory, string default_name, string filters, NativeMethods.AsyncCallback cb);
+    private delegate void DialogOpenFilePanelAsyncDelegate(string title, string directory, string filters, bool multiselect, AsyncCallback cb);
+    private delegate void DialogOpenFolderPanelAsyncDelegate(string title, string directory, bool multiselect, AsyncCallback cb);
+    private delegate void DialogSaveFilePanelAsyncDelegate(string title, string directory, string default_name, string filters, AsyncCallback cb);
     
     // ReSharper restore InconsistentNaming
 }
