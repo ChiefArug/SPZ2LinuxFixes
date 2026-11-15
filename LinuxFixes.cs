@@ -24,10 +24,10 @@ public class LinuxFixes : IMod {
         }
 
         logger.Info("LinuxFixes detected Linux, loading.");
-        load();
+        Load();
     }
     
-    private void load() {
+    private void Load() {
         var directoryName = Path.GetDirectoryName(typeof (LinuxFixes).Assembly.Location);
         if (directoryName == null) {
             _logger.Error("Mod path is null");
@@ -48,9 +48,7 @@ public class LinuxFixes : IMod {
         _logger.Info($"Loaded libminizip at {minizip}");
         _natives = [lctfb, minizip];
 
-        // this doesn't use a collection expression because for some reason that CREATES A SYNTHETIC CLASS
         _hooks = [
-            
             // fix crosstales file browser not working on wayland by using a reimplementation that does work
             // ReSharper disable RedundantDelegateCreation // the `new Func/Action` is to prevent the compiler generating a cache class
             new NativeHook(Marshal.GetFunctionPointerForDelegate(new Func<string, string, string, bool, IntPtr>(NativeMethods.DialogOpenFilePanel)), Marshal.GetDelegateForFunctionPointer<DialogOpenFilePanelDelegate>(dlsym(lctfb, "DialogOpenFilePanel"))),
