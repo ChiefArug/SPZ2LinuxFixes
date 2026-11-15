@@ -10,18 +10,17 @@ using ILogger = Core.Logging.ILogger;
 
 namespace LinuxFixes;
 
-public class LinuxFixes : IMod {
+public class LinuxFixes : IDisposable {
     private static ILogger _logger = null!;
     private readonly IDisposable[]? _hooks;
     private readonly IntPtr[]? _natives;
 
+    static LinuxFixes() {
+        Console.WriteLine("LinuxFixes");        
+    }
+
     public LinuxFixes(ILogger logger) {
         _logger = logger;
-        var os = SystemInfo.operatingSystemFamily;
-        if (os != OperatingSystemFamily.Linux) { 
-            logger.Error?.Log("LinuxFixes was not loaded on linux, what are you doing!?! This mod only fixes things on Linux.");
-            return;
-        }
         logger.Info?.Log("LinuxFixes detected Linux, loading.");
         
         var directoryName = Path.GetDirectoryName(typeof (LinuxFixes).Assembly.Location);
@@ -33,7 +32,7 @@ public class LinuxFixes : IMod {
         // load the libcorsstales reimplementation as we need this to replace calls later on.
         var lctfb = dlopen($"{directoryName}/libcrosstales_filebrowser_reimpl.so", /*RTLD_NOW*/0x002);
         var err = Marshal.PtrToStringAnsi(dlerror());
-        if (!string.IsNullOrEmpty(err))
+        if (!string.IsNullOrEmpty(err)) 
             logger.Error?.Log(err);
         logger.Info?.Log($"Loaded libcrosstales_filebrowser_reimpl at {lctfb}");
         // preload minizip as a global library so that when assimp tries to load it, it can find it

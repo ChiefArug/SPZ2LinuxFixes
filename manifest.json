@@ -1,6 +1,6 @@
 {
   "$schema": "https://shapez2.raphdf201.net/assets/manifestSchema.json",
-  "Version": "1.1.0",
+  "Version": "1.1.1",
   "Author": "ChiefArug",
   "Assemblies": [
     "LinuxFixes.dll"
