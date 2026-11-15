@@ -12,21 +12,25 @@ namespace LinuxFixes;
 
 public class LinuxFixes : IMod {
     private static ILogger _logger = null!;
-    private readonly List<IDisposable>? _hooks;
-    private readonly IntPtr[]? _natives;
-    
+    private List<IDisposable>? _hooks;
+    private IntPtr[]? _natives;
+
     public LinuxFixes(ILogger logger) {
         _logger = logger;
         var os = SystemInfo.operatingSystemFamily;
-        if (os != OperatingSystemFamily.Linux) { 
+        if (os != OperatingSystemFamily.Linux) {
             logger.Error?.Log("LinuxFixes was not loaded on linux, what are you doing!?! This mod only fixes things on Linux.");
             return;
         }
+
         logger.Info("LinuxFixes detected Linux, loading.");
-        
+        load();
+    }
+    
+    private void load() {
         var directoryName = Path.GetDirectoryName(typeof (LinuxFixes).Assembly.Location);
         if (directoryName == null) {
-            logger.Error("Mod path is null");
+            _logger.Error("Mod path is null");
             return;
         }
 
@@ -34,14 +38,14 @@ public class LinuxFixes : IMod {
         var lctfb = dlopen($"{directoryName}/libcrosstales_filebrowser_reimpl.so", /*RTLD_NOW*/0x002);
         var err = Marshal.PtrToStringAnsi(dlerror());
         if (!string.IsNullOrEmpty(err)) 
-            logger.Error(err);
-        logger.Info($"Loaded libcrosstales_filebrowser_reimpl at {lctfb}");
+            _logger.Error(err);
+        _logger.Info($"Loaded libcrosstales_filebrowser_reimpl at {lctfb}");
         // preload minizip as a global library so that when assimp tries to load it, it can find it
         var minizip = dlopen($"{directoryName}/libminizip.so", /*RTLD_NOW*/0x002 | /*RTLD_GLOBAL*/0x100);
         var err2 = Marshal.PtrToStringAnsi(dlerror());
         if (!string.IsNullOrEmpty(err2))
-            logger.Error(err2);
-        logger.Info($"Loaded libminizip at {minizip}");
+           _logger.Error(err2);
+        _logger.Info($"Loaded libminizip at {minizip}");
         _natives = [lctfb, minizip];
 
         // this doesn't use a collection expression because for some reason that CREATES A SYNTHETIC CLASS
